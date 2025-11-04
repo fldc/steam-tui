@@ -300,20 +300,34 @@ fn execute(
                             log!("login");
                         }
                         ["info"] => {
-                            account = match Account::new(&response.to_string()) {
-                                Ok(acct) => Some(acct),
-                                _ => None,
-                            };
-                            let mut state = state.lock()?;
-                            *state = State::Loaded(0, -2);
+                            // Read all info response lines
+                            let mut full_response = response.to_string();
+                            while !full_response.contains("Offline Mode:") {
+                                if let Ok(buf) = cmd.maybe_next() {
+                                    let line = String::from_utf8_lossy(&buf);
+                                    full_response.push_str(&line);
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            // Check if actually logged in by looking at logon state
+                            if full_response.contains("Logon state: Logged Off") ||
+                               full_response.contains("SteamID: [U:1:0]") {
+                                let mut state = state.lock()?;
+                                *state = State::Failed;
+                            } else {
+                                account = match Account::new(&full_response) {
+                                    Ok(acct) => Some(acct),
+                                    _ => None,
+                                };
+                                let mut state = state.lock()?;
+                                *state = State::Loaded(0, -2);
+                            }
                             log!("info");
                         }
                         ["licenses_print"] => {
-                            // Extract licenses
-                            if response == "[0m" {
-                                continue;
-                            }
-
+                            // Extract licenses - Steam returns all licenses in one massive response
                             games = Vec::new();
                             let licenses = response.to_string();
                             let keys = keys_from_licenses(licenses);
@@ -644,13 +658,12 @@ fn scrub_past_responses(mut cmd: SteamCmd, initial_response: String, scrub_respo
 fn keys_from_licenses(licenses: String) -> Vec<i32> {
     licenses
         .lines()
-        .enumerate()
-        .filter(|(i, _)| i % 4 == 0)
-        .map(|(_, l)| match *LICENSE_LEX.tokenize(l).as_slice() {
-            ["packageID", id] => id.parse::<i32>().unwrap_or(-1),
-            _ => -1,
+        .filter_map(|l| {
+            match *LICENSE_LEX.tokenize(l).as_slice() {
+                ["packageID", id] => id.parse::<i32>().ok(),
+                _ => None,
+            }
         })
-        .filter(|x| x >= &0)
         .collect::<Vec<i32>>()
 }
 
