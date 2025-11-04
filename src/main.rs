@@ -109,13 +109,20 @@ fn entry() -> Result<(), Box<dyn std::error::Error>> {
                         let offset_x = game_placement[1].width + game_placement[1].x;
                         let offset_y = game_placement[1].height + game_placement[1].y;
                         let (width, height) = {
-                            // 62% is also hardcoded in the window width, and 160 is totally
-                            // arbitrary, but the really large images look super goofy.
-                            // TODO: Allow for user adjustable widths
-                            let width = min((offset_x as f32) * 0.62, 160.0);
-                            // Height is counted by row, and there are 10 lines of info.
-                            let height = min((offset_y as f32) - 10.0, 80.0);
-                            // Take minium, but respect aspect ratio.
+                            // Use fixed dimensions to prevent stretching and maintain consistent size
+                            // Steam library header images are typically 460×215 (≈2.14:1 aspect ratio)
+                            // Using a 2:1 ratio for terminal compatibility
+                            const MAX_WIDTH: f32 = 80.0;  // Fixed width for consistency
+                            const MAX_HEIGHT: f32 = 40.0; // Fixed height (2:1 aspect ratio)
+
+                            let available_width = offset_x as f32;
+                            let available_height = (offset_y as f32) - 10.0; // 10 lines for info
+
+                            // Use fixed size but ensure it fits within available space
+                            let width = min(MAX_WIDTH, available_width);
+                            let height = min(MAX_HEIGHT, available_height);
+
+                            // Maintain 2:1 aspect ratio without stretching
                             (
                                 min(width, height * 2.0) as u16,
                                 min(height, width / 2.0) as u16,
